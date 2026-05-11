@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# retitle-flatpak — changes the window title of a Flatpak app
-# supports: PyQt/PySide, GTK (Python), Electron/JS
-# use: retitle-flatpak <APP_ID> "<new title>"
 
 set -euo pipefail
 
 APP_ID="${1:-}"
 NEW_TITLE="${2:-}"
 
-# ── validations ────────────────────────────────────────────────────────────────
+# ── validations ──
 
 if [[ -z "$APP_ID" || -z "$NEW_TITLE" ]]; then
     echo "Use: retitle-flatpak <APP_ID> \"<new title>\""
@@ -31,31 +28,7 @@ fi
 echo "📁 Path: $APP_PATH"
 echo ""
 
-# ── pattern definitions ────────────────────────────────────────────────────────
-#
-#   pyqt_i18n   →  setWindowTitle(_("Title"))     PyQt/PySide with gettext
-#   pyqt_plain  →  setWindowTitle("Title")         PyQt/PySide plain
-#   gtk_i18n    →  .set_title(_("Title"))          GTK Python with gettext
-#   gtk_plain   →  .set_title("Title")             GTK Python plain
-#   electron    →  .setTitle("Title")              Electron / JS
-
-declare -A GREP_PATTERN=(
-    [pyqt_i18n]='setWindowTitle\(_\("'
-    [pyqt_plain]='setWindowTitle\("'
-    [gtk_i18n]='\.set_title\(_\("'
-    [gtk_plain]='\.set_title\("'
-    [electron]='\.setTitle\("'
-)
-
-declare -A LABEL=(
-    [pyqt_i18n]="PyQt/PySide + gettext"
-    [pyqt_plain]="PyQt/PySide plain"
-    [gtk_i18n]="GTK Python + gettext"
-    [gtk_plain]="GTK Python plain"
-    [electron]="Electron / JS"
-)
-
-# ── helpers ────────────────────────────────────────────────────────────────────
+# ── helpers ──
 
 escape_sed() {
     printf '%s' "$1" | sed 's/[[\.*^$()+?{|]/\\&/g'
@@ -68,7 +41,6 @@ extract_title() {
         pyqt_plain) grep -oP 'setWindowTitle\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
         gtk_i18n)   grep -oP '\.set_title\(_\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
         gtk_plain)  grep -oP '\.set_title\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
-        electron)   grep -oP '\.setTitle\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
     esac
 }
 
@@ -77,91 +49,192 @@ apply_patch() {
     local cur_esc new_esc
     cur_esc=$(escape_sed "$current")
     new_esc=$(escape_sed "$new")
-
     case "$ptype" in
         pyqt_i18n)  sudo sed -i "s/setWindowTitle(_(\"${cur_esc}\"))/setWindowTitle(_(\"${new_esc}\"))/" "$file" ;;
         pyqt_plain) sudo sed -i "s/setWindowTitle(\"${cur_esc}\")/setWindowTitle(\"${new_esc}\")/" "$file" ;;
         gtk_i18n)   sudo sed -i "s/set_title(_(\"${cur_esc}\"))/set_title(_(\"${new_esc}\"))/" "$file" ;;
         gtk_plain)  sudo sed -i "s/set_title(\"${cur_esc}\")/set_title(\"${new_esc}\")/" "$file" ;;
-        electron)   sudo sed -i "s/setTitle(\"${cur_esc}\")/setTitle(\"${new_esc}\")/" "$file" ;;
     esac
 }
 
-# ── search ─────────────────────────────────────────────────────────────────────
+# ── pattern definitions (PyQt / GTK) ──
 
-echo "🔍 Scanning Python/JS files for window title calls..."
+declare -A GREP_PATTERN=(
+    [pyqt_i18n]='setWindowTitle\(_\("'
+    [pyqt_plain]='setWindowTitle\("'
+    [gtk_i18n]='\.set_title\(_\("'
+    [gtk_plain]='\.set_title\("'
+)
 
-COMBINED='setWindowTitle\(_\("|setWindowTitle\("|\.set_title\(_\("|\.set_title\("|\.setTitle\("'
+declare -A LABEL=(
+    [pyqt_i18n]="PyQt/PySide + gettext"
+    [pyqt_plain]="PyQt/PySide plain"
+    [gtk_i18n]="GTK Python + gettext"
+    [gtk_plain]="GTK Python plain"
+)
+
+PTYPES_ORDER=(pyqt_i18n pyqt_plain gtk_i18n gtk_plain)
+
+# ── try python/gtk path first ──
+
+echo "🔍 Scanning Python/GTK files for window title calls..."
+
+COMBINED='setWindowTitle\(_\("|setWindowTitle\("|\.set_title\(_\("|\.set_title\("'
 
 mapfile -t ALL_FILES < <(
-    find "$APP_PATH/files" \( -name "*.py" -o -name "*.js" \) \
+    find "$APP_PATH/files" \( -name "*.py" \) \
         -exec grep -lP "$COMBINED" {} \; 2>/dev/null
 )
 
-if [[ ${#ALL_FILES[@]} -eq 0 ]]; then
-    echo "❌ No window title calls found."
-    echo "   The app may be compiled (C++, Rust, Go) — this tool only works with interpreted apps."
+if [[ ${#ALL_FILES[@]} -gt 0 ]]; then
+    # ── match each file to its pattern ──
+    declare -A FILE_PTYPE
+
+    for f in "${ALL_FILES[@]}"; do
+        for ptype in "${PTYPES_ORDER[@]}"; do
+            if grep -qP "${GREP_PATTERN[$ptype]}" "$f" 2>/dev/null; then
+                FILE_PTYPE["$f"]="$ptype"
+                break
+            fi
+        done
+    done
+
+    echo ""
+    echo "Files found:"
+    for f in "${!FILE_PTYPE[@]}"; do
+        ptype="${FILE_PTYPE[$f]}"
+        echo "  [${LABEL[$ptype]}] $f"
+        grep -nP "${GREP_PATTERN[$ptype]}" "$f"
+        echo ""
+    done
+
+    echo "⚠️  These files will be modified with sudo."
+    read -rp "Continue? [y/N] " CONFIRM
+    [[ "${CONFIRM,,}" != "y" ]] && { echo "Aborted."; exit 0; }
+
+    PATCHED=0
+    for f in "${!FILE_PTYPE[@]}"; do
+        ptype="${FILE_PTYPE[$f]}"
+        CURRENT=$(extract_title "$f" "$ptype")
+
+        if [[ -z "$CURRENT" ]]; then
+            echo "⚠️  Skipping $f — couldn't extract current title."
+            continue
+        fi
+
+        echo "🔧 Patching [${LABEL[$ptype]}] $f"
+        echo "   '$CURRENT' → '$NEW_TITLE'"
+
+        if apply_patch "$f" "$ptype" "$CURRENT" "$NEW_TITLE"; then
+            PATCHED=$((PATCHED + 1))
+        else
+            echo "⚠️  sed failed on $f — skipping."
+        fi
+    done
+
+    if [[ $PATCHED -eq 0 ]]; then
+        echo ""
+        echo "⚠️  No files were patched. Check the files above manually."
+        exit 1
+    fi
+
+    echo ""
+    echo "✅ Done ($PATCHED file(s) patched). Restart the app to see the change."
+    echo "⚠️  Note: the patch is lost if the Flatpak is updated."
+    exit 0
+fi
+
+# ── no python files found — try electron (asar) ──
+
+echo "No Python/GTK title calls found. Checking for Electron bundle..."
+
+ASAR_FILE=$(find "$APP_PATH/files" -name "app.asar" 2>/dev/null | head -1)
+
+if [[ -z "$ASAR_FILE" ]]; then
+    echo ""
+    echo "❌ No Python/GTK source or Electron bundle found."
+    echo "   The app is likely compiled (C++, Rust, Go, Java) — not supported."
     exit 1
 fi
 
-# ── match each file to its pattern type ───────────────────────────────────────
+echo "📦 Found Electron bundle: $ASAR_FILE"
+echo ""
 
-declare -A FILE_PTYPE
-PTYPES_ORDER=(pyqt_i18n pyqt_plain gtk_i18n gtk_plain electron)
+# check for asar tool
+if ! command -v asar &>/dev/null && ! npx --yes asar --version &>/dev/null 2>&1; then
+    echo "❌ 'asar' tool not found. Install it with:"
+    echo "   npm install -g asar"
+    echo "   or: npx asar (requires Node.js)"
+    exit 1
+fi
 
-for f in "${ALL_FILES[@]}"; do
-    for ptype in "${PTYPES_ORDER[@]}"; do
-        if grep -qP "${GREP_PATTERN[$ptype]}" "$f" 2>/dev/null; then
-            FILE_PTYPE["$f"]="$ptype"
-            break
-        fi
-    done
-done
+ASAR_CMD="npx --yes asar"
+command -v asar &>/dev/null && ASAR_CMD="asar"
+
+# extract to temp dir
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+echo "📂 Extracting bundle to temp dir..."
+$ASAR_CMD extract "$ASAR_FILE" "$TMPDIR/app" 2>/dev/null
+
+# search for setTitle in extracted JS
+echo "🔍 Searching for setTitle calls in extracted JS..."
+mapfile -t JS_FILES < <(
+    find "$TMPDIR/app" -name "*.js" \
+        -exec grep -lP '\.setTitle\("' {} \; 2>/dev/null
+)
+
+if [[ ${#JS_FILES[@]} -eq 0 ]]; then
+    echo "❌ No setTitle calls found in the Electron bundle."
+    echo "   The title might be set dynamically or in minified/obfuscated code."
+    exit 1
+fi
 
 echo ""
 echo "Files found:"
-for f in "${!FILE_PTYPE[@]}"; do
-    ptype="${FILE_PTYPE[$f]}"
-    echo "  [${LABEL[$ptype]}] $f"
-    grep -nP "${GREP_PATTERN[$ptype]}" "$f"
+for f in "${JS_FILES[@]}"; do
+    echo "  [Electron] $f"
+    grep -nP '\.setTitle\("' "$f"
     echo ""
 done
 
-# ── confirm ────────────────────────────────────────────────────────────────────
-
-echo "⚠️  These files will be modified with sudo."
+echo "⚠️  The original app.asar will be replaced with sudo."
 read -rp "Continue? [y/N] " CONFIRM
 [[ "${CONFIRM,,}" != "y" ]] && { echo "Aborted."; exit 0; }
 
-# ── patch ──────────────────────────────────────────────────────────────────────
-
+# patch extracted JS files
 PATCHED=0
-for f in "${!FILE_PTYPE[@]}"; do
-    ptype="${FILE_PTYPE[$f]}"
-    CURRENT=$(extract_title "$f" "$ptype")
-
+for f in "${JS_FILES[@]}"; do
+    CURRENT=$(grep -oP '\.setTitle\("\K[^"]+' "$f" 2>/dev/null | head -1)
     if [[ -z "$CURRENT" ]]; then
         echo "⚠️  Skipping $f — couldn't extract current title."
         continue
     fi
 
-    echo "🔧 Patching [${LABEL[$ptype]}] $f"
+    cur_esc=$(escape_sed "$CURRENT")
+    new_esc=$(escape_sed "$NEW_TITLE")
+
+    echo "🔧 Patching [Electron] $(basename "$f")"
     echo "   '$CURRENT' → '$NEW_TITLE'"
 
-    if apply_patch "$f" "$ptype" "$CURRENT" "$NEW_TITLE"; then
-        PATCHED=$((PATCHED + 1))
-    else
-        echo "⚠️  sed failed on $f — skipping."
-    fi
+    sed -i "s/setTitle(\"${cur_esc}\")/setTitle(\"${new_esc}\")/" "$f"
+    PATCHED=$((PATCHED + 1))
 done
 
-# ── result ─────────────────────────────────────────────────────────────────────
-
 if [[ $PATCHED -eq 0 ]]; then
-    echo ""
-    echo "⚠️  No files were patched. Check the files above manually."
+    echo "⚠️  No files were patched."
     exit 1
 fi
+
+# repack asar
+echo ""
+echo "📦 Repacking bundle..."
+$ASAR_CMD pack "$TMPDIR/app" "$TMPDIR/app.asar" 2>/dev/null
+
+# replace original
+echo "🔐 Replacing original app.asar (requires sudo)..."
+sudo cp "$TMPDIR/app.asar" "$ASAR_FILE"
 
 echo ""
 echo "✅ Done ($PATCHED file(s) patched). Restart the app to see the change."
