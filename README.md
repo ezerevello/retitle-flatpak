@@ -22,9 +22,9 @@ The only real way in is **inside the app's own source**. Many Flatpak apps are w
 ---
 
 ## Apps List
-Here's a list that includes applications that run using interpreters or engines (such as Electron, Python, or Java):
+Here's a list that includes applications that run using interpreters or engines:
 
-### 🐍 Python Based (Easy to edit .py files)
+### 🐍 Python Based
 *   ZapZap
 *   Parabolic (Tube Converter)
 *   Tauon Music Box
@@ -35,7 +35,7 @@ Here's a list that includes applications that run using interpreters or engines 
 *   OpenShot Video Editor
 *   Curlew
 
-### 🌐 Electron / JavaScript Based (Requires editing .js or package.json)
+### 🌐 Electron / JavaScript Based
 *   Visual Studio Code
 *   Discord
 *   Obsidian
@@ -48,7 +48,7 @@ Here's a list that includes applications that run using interpreters or engines 
 *   Mailspring
 *   Signal Desktop
 
-### ☕ Java / JVM Based (Uses setTitle in Swing/JavaFX)
+### ☕ Java / JVM Based
 *   Minecraft (Java Edition)
 *   IntelliJ IDEA
 *   PyCharm
