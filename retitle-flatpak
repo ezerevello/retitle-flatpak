@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Use: retitle-flatpak <APP_ID> "<title>"
+# retitle-flatpak — changes the window title of a Flatpak app
+# supports: PyQt/PySide, GTK (Python), Electron/JS
+# use: retitle-flatpak <APP_ID> "<new title>"
 
 set -euo pipefail
 
 APP_ID="${1:-}"
 NEW_TITLE="${2:-}"
 
-# --- validations ---
+# ── validations ────────────────────────────────────────────────────────────────
+
 if [[ -z "$APP_ID" || -z "$NEW_TITLE" ]]; then
-    echo "Use: retitle-flatpak <APP_ID> \"<title>\""
+    echo "Use: retitle-flatpak <APP_ID> \"<new title>\""
     echo "e.g: retitle-flatpak com.rtosta.zapzap \"WhatsApp\""
     exit 1
 fi
@@ -28,54 +31,134 @@ fi
 echo "📁 Path: $APP_PATH"
 echo ""
 
-# --- search strictly for setWindowTitle(_(" pattern only ---
-echo "🔍 Searching setWindowTitle calls in Python/JS files..."
-mapfile -t MATCHES < <(
-    find "$APP_PATH/files" \( -name "*.py" -o -name "*.js" \) \
-        -exec grep -lP 'setWindowTitle\(_\("' {} \; 2>/dev/null
+# ── pattern definitions ────────────────────────────────────────────────────────
+#
+#   pyqt_i18n   →  setWindowTitle(_("Title"))     PyQt/PySide with gettext
+#   pyqt_plain  →  setWindowTitle("Title")         PyQt/PySide plain
+#   gtk_i18n    →  .set_title(_("Title"))          GTK Python with gettext
+#   gtk_plain   →  .set_title("Title")             GTK Python plain
+#   electron    →  .setTitle("Title")              Electron / JS
+
+declare -A GREP_PATTERN=(
+    [pyqt_i18n]='setWindowTitle\(_\("'
+    [pyqt_plain]='setWindowTitle\("'
+    [gtk_i18n]='\.set_title\(_\("'
+    [gtk_plain]='\.set_title\("'
+    [electron]='\.setTitle\("'
 )
 
-if [[ ${#MATCHES[@]} -eq 0 ]]; then
-    echo "❌ No setWindowTitle calls found. The app may be compiled."
+declare -A LABEL=(
+    [pyqt_i18n]="PyQt/PySide + gettext"
+    [pyqt_plain]="PyQt/PySide plain"
+    [gtk_i18n]="GTK Python + gettext"
+    [gtk_plain]="GTK Python plain"
+    [electron]="Electron / JS"
+)
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+escape_sed() {
+    printf '%s' "$1" | sed 's/[[\.*^$()+?{|]/\\&/g'
+}
+
+extract_title() {
+    local file="$1" ptype="$2"
+    case "$ptype" in
+        pyqt_i18n)  grep -oP 'setWindowTitle\(_\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
+        pyqt_plain) grep -oP 'setWindowTitle\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
+        gtk_i18n)   grep -oP '\.set_title\(_\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
+        gtk_plain)  grep -oP '\.set_title\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
+        electron)   grep -oP '\.setTitle\("\K[^"]+' "$file" 2>/dev/null | head -1 ;;
+    esac
+}
+
+apply_patch() {
+    local file="$1" ptype="$2" current="$3" new="$4"
+    local cur_esc new_esc
+    cur_esc=$(escape_sed "$current")
+    new_esc=$(escape_sed "$new")
+
+    case "$ptype" in
+        pyqt_i18n)  sudo sed -i "s/setWindowTitle(_(\"${cur_esc}\"))/setWindowTitle(_(\"${new_esc}\"))/" "$file" ;;
+        pyqt_plain) sudo sed -i "s/setWindowTitle(\"${cur_esc}\")/setWindowTitle(\"${new_esc}\")/" "$file" ;;
+        gtk_i18n)   sudo sed -i "s/set_title(_(\"${cur_esc}\"))/set_title(_(\"${new_esc}\"))/" "$file" ;;
+        gtk_plain)  sudo sed -i "s/set_title(\"${cur_esc}\")/set_title(\"${new_esc}\")/" "$file" ;;
+        electron)   sudo sed -i "s/setTitle(\"${cur_esc}\")/setTitle(\"${new_esc}\")/" "$file" ;;
+    esac
+}
+
+# ── search ─────────────────────────────────────────────────────────────────────
+
+echo "🔍 Scanning Python/JS files for window title calls..."
+
+COMBINED='setWindowTitle\(_\("|setWindowTitle\("|\.set_title\(_\("|\.set_title\("|\.setTitle\("'
+
+mapfile -t ALL_FILES < <(
+    find "$APP_PATH/files" \( -name "*.py" -o -name "*.js" \) \
+        -exec grep -lP "$COMBINED" {} \; 2>/dev/null
+)
+
+if [[ ${#ALL_FILES[@]} -eq 0 ]]; then
+    echo "❌ No window title calls found."
+    echo "   The app may be compiled (C++, Rust, Go) — this tool only works with interpreted apps."
     exit 1
 fi
 
+# ── match each file to its pattern type ───────────────────────────────────────
+
+declare -A FILE_PTYPE
+PTYPES_ORDER=(pyqt_i18n pyqt_plain gtk_i18n gtk_plain electron)
+
+for f in "${ALL_FILES[@]}"; do
+    for ptype in "${PTYPES_ORDER[@]}"; do
+        if grep -qP "${GREP_PATTERN[$ptype]}" "$f" 2>/dev/null; then
+            FILE_PTYPE["$f"]="$ptype"
+            break
+        fi
+    done
+done
+
+echo ""
 echo "Files found:"
-for f in "${MATCHES[@]}"; do
-    echo "  → $f"
-    grep -nP 'setWindowTitle\(_\("' "$f"
+for f in "${!FILE_PTYPE[@]}"; do
+    ptype="${FILE_PTYPE[$f]}"
+    echo "  [${LABEL[$ptype]}] $f"
+    grep -nP "${GREP_PATTERN[$ptype]}" "$f"
     echo ""
 done
 
-# --- confirm before patch ---
+# ── confirm ────────────────────────────────────────────────────────────────────
+
 echo "⚠️  These files will be modified with sudo."
 read -rp "Continue? [y/N] " CONFIRM
 [[ "${CONFIRM,,}" != "y" ]] && { echo "Aborted."; exit 0; }
 
-# --- apply patch ---
+# ── patch ──────────────────────────────────────────────────────────────────────
+
 PATCHED=0
-for f in "${MATCHES[@]}"; do
-    # extract title strictly from setWindowTitle(_(" pattern
-    CURRENT=$(grep -oP 'setWindowTitle\(_\("\K[^"]+' "$f" 2>/dev/null | head -1)
+for f in "${!FILE_PTYPE[@]}"; do
+    ptype="${FILE_PTYPE[$f]}"
+    CURRENT=$(extract_title "$f" "$ptype")
+
     if [[ -z "$CURRENT" ]]; then
         echo "⚠️  Skipping $f — couldn't extract current title."
         continue
     fi
 
-    # escape special regex characters in CURRENT and NEW_TITLE
-    CURRENT_ESC=$(printf '%s' "$CURRENT" | sed 's/[[\.*^$()+?{|]/\\&/g')
-    NEW_ESC=$(printf '%s' "$NEW_TITLE" | sed 's/[[\.*^$()+?{|]/\\&/g')
-
-    echo "🔧 Patching $f"
+    echo "🔧 Patching [${LABEL[$ptype]}] $f"
     echo "   '$CURRENT' → '$NEW_TITLE'"
-    if sudo sed -i "s/setWindowTitle(_(\"${CURRENT_ESC}\"))/setWindowTitle(_(\"${NEW_ESC}\"))/" "$f"; then
+
+    if apply_patch "$f" "$ptype" "$CURRENT" "$NEW_TITLE"; then
         PATCHED=$((PATCHED + 1))
     else
         echo "⚠️  sed failed on $f — skipping."
     fi
 done
 
+# ── result ─────────────────────────────────────────────────────────────────────
+
 if [[ $PATCHED -eq 0 ]]; then
+    echo ""
     echo "⚠️  No files were patched. Check the files above manually."
     exit 1
 fi
