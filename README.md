@@ -17,7 +17,7 @@ Born from trying to rename the [ZapZap](https://flathub.org/apps/com.rtosta.zapz
 
 **Clarification: I did a basic script for me, to change ZapZap window title, but then i thought that make a complete script for people searching the same exact thing as me would be cool, so this is only a "premium" version of a basic script to make this easy to use for me and you**
 
-So i did this in my free time only for fun and for save myself time in the future if I want to change the same thing
+So i did this in my free time only for fun and for save myself time in the future if I want to change something like that.
 
 ----
 
@@ -34,7 +34,7 @@ For Electron apps specifically, the JS code is bundled inside an `app.asar` arch
 
 ## Compatibility
 
-Honestly, I can't guarantee this works for every app out there:
+Honestly, I can't guarantee this works for every app out there, but here's a list of some apps compatibility, but another apps can work:
 
 ### 🐍 Python Based — ✅ Supported
 Python apps ship their source as plain `.py` files, so patching is reliable.
