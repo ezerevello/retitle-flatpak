@@ -4,13 +4,58 @@ A bash script to change the window title of Flatpak apps by patching their inter
 
 ## Why this ahh tool exists?
 
-Born from trying to rename the [ZapZap](https://flathub.org/apps/com.rtosta.zapzap) WhatsApp wrapper window to match its custom icon, because the original title is "ZapZap" and I don't like it. And then discovering that KWin's "Special Window Settings" only identifies windows, not renames them.
+Born from trying to rename the [ZapZap](https://flathub.org/apps/com.rtosta.zapzap) WhatsApp wrapper window to match my customization, because the original title is "ZapZap" and I don't like it. And then discovering that KWin's "Special Window Settings" only identifies windows, not renames them.
 
-On **Wayland**, no external process can change the window title of another app — the protocol simply doesn't allow it. Tools like `wmctrl`, `xdotool`, and KWin special window rules can't do it either (those are window identifiers, not title setters).
+**Clarification: I did a basic script for me, to change ZapZap window title, but then i thought that make a complete script for people searching the same exact thing as me would be cool, so this is only a "premium" version o a basic script to make this easy to use for me and you**
+
+So i did this in my free time only for fun and for save myself time in the future if I want to change the same thing
+
+----
+
+## Why this overcomplicated method?
+On **Wayland**, no external process can change the window title of another app — the protocol simply doesn't allow it. Tools like `wmctrl`, `xdotool`, and KWin special window rules can't do it either (those are window identifiers, not title setters)
 
 The only real way in is **inside the app's own source**. Many Flatpak apps are written in Python or JS, meaning their source ships readable and patchable. This script finds the window title call and replaces the string directly.
 
 **Only tested on:** Fedora 44 · KDE Plasma · Wayland
+
+---
+
+## Apps List
+Here's a list that includes applications that run using interpreters or engines (such as Electron, Python, or Java):
+
+### 🐍 Python Based (Easy to edit .py files)
+*   ZapZap
+*   Parabolic (Tube Converter)
+*   Tauon Music Box
+*   BleachBit
+*   Gramps
+*   Deluge (Gtk UI)
+*   Gajim
+*   OpenShot Video Editor
+*   Curlew
+
+### 🌐 Electron / JavaScript Based (Requires editing .js or package.json)
+*   Visual Studio Code
+*   Discord
+*   Obsidian
+*   Logseq
+*   Bitwarden
+*   Etcher
+*   WebTorrent Desktop
+*   Cider
+*   Standard Notes
+*   Mailspring
+*   Signal Desktop
+
+### ☕ Java / JVM Based (Uses setTitle in Swing/JavaFX)
+*   Minecraft (Java Edition)
+*   IntelliJ IDEA
+*   PyCharm
+*   DBeaver
+*   FreeMind
+*   RSSOwl
+
 
 ---
 
@@ -39,8 +84,6 @@ retitle-flatpak <APP_ID> "<new title>"
 
 ```bash
 retitle-flatpak com.rtosta.zapzap "WhatsApp"
-retitle-flatpak org.telegram.desktop "Telegram"
-retitle-flatpak com.spotify.Client "Spotify"
 ```
 
 To find the App ID of any installed Flatpak:
@@ -77,13 +120,7 @@ The script detects and patches all of these automatically:
 
 Honestly, I can't guarantee this works for every Flatpak out there — it depends entirely on how each app sets its window title internally, and there are dozens of ways to do it. What I can say is that the script covers the five most common patterns across PyQt, GTK, and Electron apps.
 
-The only app verified 100% is **ZapZap** (`com.rtosta.zapzap`), because that's the one that started all this. If you try it on another app and it works, open a PR or an issue and I'll add it to the list.
-
-### Confirmed working
-
-| App | App ID | Framework |
-|---|---|---|
-| ZapZap | `com.rtosta.zapzap` | PyQt + gettext |
+The only app verified 100% is **ZapZap** (`com.rtosta.zapzap`), because that's the one that started all this.
 
 ---
 
@@ -113,19 +150,6 @@ flatpak repair com.rtosta.zapzap
 # or
 flatpak uninstall com.rtosta.zapzap && flatpak install com.rtosta.zapzap
 ```
-
----
-
-## Repo structure
-
-```
-retitle-flatpak/
-├── retitle-flatpak   ← main script
-├── install.sh        ← installer (copies script + handles PATH)
-└── README.md
-```
-
----
 
 ## License
 
