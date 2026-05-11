@@ -33,6 +33,7 @@ For Electron apps specifically, the JS code is bundled inside an `app.asar` arch
 ## Compatibility
 
 Honestly, I can't guarantee this works for every app out there, but you can try! This tool was created precisely so you don't have to keep messing with the files every time you want to do something like this!
+(Remember: this is for **Flatpak** interpreted apps)
 
 ### 🐍 Python Based — ✅ Supported
 Python apps ship their source as plain `.py` files, so patching is reliable.
