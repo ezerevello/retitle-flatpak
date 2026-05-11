@@ -15,8 +15,6 @@ A bash script to change the window title of Flatpak apps by patching their inter
 
 Born from trying to rename the [ZapZap](https://flathub.org/apps/com.rtosta.zapzap) WhatsApp wrapper window to match my customization, because the original title is "ZapZap" and I don't like it. And then discovering that KWin's "Special Window Settings" only identifies windows, not renames them.
 
-**Clarification: I did a basic script for me, to change ZapZap window title, but then i thought that make a complete script for people searching the same exact thing as me would be cool, so this is only a "premium" version of a basic script to make this easy to use for me and you**
-
 So i did this in my free time only for fun and for save myself time in the future if I want to change something like that.
 
 ----
@@ -34,41 +32,13 @@ For Electron apps specifically, the JS code is bundled inside an `app.asar` arch
 
 ## Compatibility
 
-Honestly, I can't guarantee this works for every app out there, but here's a list of some apps compatibility, but another apps can work:
+Honestly, I can't guarantee this works for every app out there, but you can try! This tool was created precisely so you don't have to keep messing with the files every time you want to do something like this!
 
 ### 🐍 Python Based — ✅ Supported
 Python apps ship their source as plain `.py` files, so patching is reliable.
 
-| App | Expected result |
-|---|---|
-| ZapZap | ✅ Confirmed working |
-| OpenShot Video Editor | 🟡 Likely works (PyQt) |
-| BleachBit | 🟡 Likely works (GTK) |
-| Gramps | 🟡 Likely works (GTK) |
-| Deluge (Gtk UI) | 🟡 Likely works (GTK) |
-| Gajim | 🟡 Likely works (GTK) |
-| Curlew | 🟡 Likely works (GTK) |
-| Tauon Music Box | 🔴 Unlikely (custom SDL2 UI, not GTK/Qt) |
-| Parabolic (Tube Converter) | 🔴 No (written in C#, not Python) |
-
 ### 🌐 Electron / JavaScript Based — 🟡 Depends on the app
 Electron apps bundle their JS inside `app.asar`. The script extracts, patches, and repacks it automatically — but it only works if the title is set as a plain string literal in the code. Apps that minify or obfuscate their JS, or set the title dynamically, won't work.
-
-| App | Expected result |
-|---|---|
-| Bitwarden | 🟡 Likely works |
-| Standard Notes | 🟡 Likely works |
-| Mailspring | 🟡 Likely works |
-| WebTorrent Desktop | 🟡 Likely works |
-| Etcher | 🟡 Likely works |
-| Cider | 🟡 Likely works |
-| Obsidian | 🟡 Likely works |
-| Logseq | 🟡 Likely works |
-| Visual Studio Code | 🔴 No (minified JS, dynamic title) |
-| Discord | 🔴 No (obfuscated code) |
-| Signal Desktop | 🔴 No (obfuscated code) |
-
-The only way to know for sure is to run the script and see if it finds something.
 
 ### ☕ Java / JVM Based — 🔴 Not supported
 Compiled bytecode, no readable source. Out of scope entirely.
