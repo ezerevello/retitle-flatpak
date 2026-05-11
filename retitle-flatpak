@@ -115,7 +115,7 @@ if [[ ${#ALL_FILES[@]} -gt 0 ]]; then
     PATCHED=0
     for f in "${!FILE_PTYPE[@]}"; do
         ptype="${FILE_PTYPE[$f]}"
-        CURRENT=$(extract_title "$f" "$ptype")
+        CURRENT=$(extract_title "$f" "$ptype") || true
 
         if [[ -z "$CURRENT" ]]; then
             echo "⚠️  Skipping $f — couldn't extract current title."
@@ -206,7 +206,7 @@ read -rp "Continue? [y/N] " CONFIRM
 # patch extracted JS files
 PATCHED=0
 for f in "${JS_FILES[@]}"; do
-    CURRENT=$(grep -oP '\.setTitle\("\K[^"]+' "$f" 2>/dev/null | head -1)
+    CURRENT=$(grep -oP '\.setTitle\("\K[^"]+' "$f" 2>/dev/null | head -1) || true
     if [[ -z "$CURRENT" ]]; then
         echo "⚠️  Skipping $f — couldn't extract current title."
         continue

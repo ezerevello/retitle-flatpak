@@ -1,5 +1,7 @@
 # retitle-flatpak
 
+![before](/home/eze/retitle-flatpak/before.png) ![after](/home/eze/retitle-flatpak/after.png)
+
 A bash script to change the window title of Flatpak apps by patching their interpreted source files (Python/JS).
 
 ## Why this ahh tool exists?
