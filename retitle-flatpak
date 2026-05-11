@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Use: retitle-flatpak <APP_ID> "<title>"
+
+set -euo pipefail
+
+APP_ID="${1:-}"
+NEW_TITLE="${2:-}"
+
+# --- validations ---
+if [[ -z "$APP_ID" || -z "$NEW_TITLE" ]]; then
+    echo "Use: retitle-flatpak <APP_ID> \"<title>\""
+    echo "e.g: retitle-flatpak com.rtosta.zapzap \"WhatsApp\""
+    exit 1
+fi
+
+if ! flatpak info "$APP_ID" &>/dev/null; then
+    echo "❌ App '$APP_ID' not found. Available apps:"
+    flatpak list --app --columns=application
+    exit 1
+fi
+
+APP_PATH=$(flatpak info --show-location "$APP_ID" 2>/dev/null)
+if [[ -z "$APP_PATH" ]]; then
+    echo "❌ Could not resolve app path."
+    exit 1
+fi
+
+echo "📁 Path: $APP_PATH"
+echo ""
+
+# --- search strictly for setWindowTitle(_(" pattern only ---
+echo "🔍 Searching setWindowTitle calls in Python/JS files..."
+mapfile -t MATCHES < <(
+    find "$APP_PATH/files" \( -name "*.py" -o -name "*.js" \) \
+        -exec grep -lP 'setWindowTitle\(_\("' {} \; 2>/dev/null
+)
+
+if [[ ${#MATCHES[@]} -eq 0 ]]; then
+    echo "❌ No setWindowTitle calls found. The app may be compiled."
+    exit 1
+fi
+
+echo "Files found:"
+for f in "${MATCHES[@]}"; do
+    echo "  → $f"
+    grep -nP 'setWindowTitle\(_\("' "$f"
+    echo ""
+done
+
+# --- confirm before patch ---
+echo "⚠️  These files will be modified with sudo."
+read -rp "Continue? [y/N] " CONFIRM
+[[ "${CONFIRM,,}" != "y" ]] && { echo "Aborted."; exit 0; }
+
+# --- apply patch ---
+PATCHED=0
+for f in "${MATCHES[@]}"; do
+    # extract title strictly from setWindowTitle(_(" pattern
+    CURRENT=$(grep -oP 'setWindowTitle\(_\("\K[^"]+' "$f" 2>/dev/null | head -1)
+    if [[ -z "$CURRENT" ]]; then
+        echo "⚠️  Skipping $f — couldn't extract current title."
+        continue
+    fi
+
+    # escape special regex characters in CURRENT and NEW_TITLE
+    CURRENT_ESC=$(printf '%s' "$CURRENT" | sed 's/[[\.*^$()+?{|]/\\&/g')
+    NEW_ESC=$(printf '%s' "$NEW_TITLE" | sed 's/[[\.*^$()+?{|]/\\&/g')
+
+    echo "🔧 Patching $f"
+    echo "   '$CURRENT' → '$NEW_TITLE'"
+    if sudo sed -i "s/setWindowTitle(_(\"${CURRENT_ESC}\"))/setWindowTitle(_(\"${NEW_ESC}\"))/" "$f"; then
+        PATCHED=$((PATCHED + 1))
+    else
+        echo "⚠️  sed failed on $f — skipping."
+    fi
+done
+
+if [[ $PATCHED -eq 0 ]]; then
+    echo "⚠️  No files were patched. Check the files above manually."
+    exit 1
+fi
+
+echo ""
+echo "✅ Done ($PATCHED file(s) patched). Restart the app to see the change."
+echo "⚠️  Note: the patch is lost if the Flatpak is updated."
